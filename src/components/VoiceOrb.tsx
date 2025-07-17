@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Phone, PhoneOff, MicOff } from 'lucide-react';
 
 interface VoiceOrbProps {
@@ -22,21 +22,53 @@ const VoiceOrb: React.FC<VoiceOrbProps> = ({
   connectionAttempts,
   onCallClick
 }) => {
-  // Memoized responsive button size
-  const buttonSize = useMemo(() => {
+  // Memoized responsive button size with window resize handling
+  const [buttonSize, setButtonSize] = useState(() => {
+    if (typeof window === 'undefined') return 24;
     return window.innerWidth < 640 ? 20 : window.innerWidth < 1024 ? 24 : 28;
+  });
+
+  // Update button size on window resize
+  useEffect(() => {
+    const updateButtonSize = () => {
+      const newSize = window.innerWidth < 640 ? 20 : window.innerWidth < 1024 ? 24 : 28;
+      setButtonSize(newSize);
+    };
+
+    window.addEventListener('resize', updateButtonSize);
+    return () => window.removeEventListener('resize', updateButtonSize);
   }, []);
+
+  // Memoized orb classes for better performance
+  const orbClasses = useMemo(() => {
+    const baseClasses = 'w-64 h-64 sm:w-80 sm:h-80 lg:w-96 lg:h-96 xl:w-[400px] xl:h-[400px] mx-auto rounded-full transition-all duration-500 will-change-transform shadow-2xl relative overflow-hidden';
+    
+    if (isConnected) {
+      return `${baseClasses} bg-gradient-to-br from-emerald-400 via-blue-500 to-purple-600 animate-pulse`;
+    } else if (isSpeaking) {
+      return `${baseClasses} bg-gradient-to-br from-blue-400 via-cyan-500 to-teal-600 animate-spin`;
+    } else {
+      return `${baseClasses} bg-gradient-to-br from-blue-400 via-cyan-500 to-teal-600`;
+    }
+  }, [isConnected, isSpeaking]);
+
+  // Memoized status text for better performance
+  const statusText = useMemo(() => {
+    if (isConnecting || isRequestingPermission) {
+      return connectionAttempts > 0 ? `Återansluter... (${connectionAttempts}/${RETRY_ATTEMPTS})` : 'Ansluter...';
+    } else if (isConnected) {
+      return 'Avsluta samtal';
+    } else if (hasPermission === false) {
+      return 'Aktivera mikrofon';
+    } else {
+      return 'Ring AI-agent';
+    }
+  }, [isConnecting, isRequestingPermission, connectionAttempts, isConnected, hasPermission]);
 
   return (
     <div className="relative mb-6 sm:mb-8 lg:mb-12">
-      {/* Enhanced gradient orb with better performance */}
-      <div className={`w-64 h-64 sm:w-80 sm:h-80 lg:w-96 lg:h-96 xl:w-[400px] xl:h-[400px] mx-auto rounded-full transition-all duration-500 will-change-transform ${
-        isConnected 
-          ? 'bg-gradient-to-br from-emerald-400 via-blue-500 to-purple-600 animate-pulse' 
-          : isSpeaking
-          ? 'bg-gradient-to-br from-blue-400 via-cyan-500 to-teal-600 animate-spin'
-          : 'bg-gradient-to-br from-blue-400 via-cyan-500 to-teal-600'
-      } shadow-2xl relative overflow-hidden`}>
+      {/* Enhanced gradient orb with memoized classes */}
+      <div className={orbClasses}>
         <div className="absolute inset-3 sm:inset-4 lg:inset-6 rounded-full bg-gradient-to-br from-white/20 to-transparent"></div>
         
         {/* Enhanced central button */}
@@ -71,15 +103,7 @@ const VoiceOrb: React.FC<VoiceOrbProps> = ({
       {/* Enhanced status label */}
       <div className="absolute -bottom-12 sm:-bottom-16 lg:-bottom-20 left-1/2 transform -translate-x-1/2 w-full px-4">
         <div className="bg-black/80 backdrop-blur-sm text-white px-3 py-2 sm:px-4 sm:py-2 lg:px-6 lg:py-3 rounded-full text-xs sm:text-sm lg:text-base font-medium shadow-lg mx-auto max-w-fit">
-          {isConnecting || isRequestingPermission ? (
-            connectionAttempts > 0 ? `Återansluter... (${connectionAttempts}/${RETRY_ATTEMPTS})` : 'Ansluter...'
-          ) : isConnected ? (
-            'Avsluta samtal'
-          ) : hasPermission === false ? (
-            'Aktivera mikrofon'
-          ) : (
-            'Ring AI-agent'
-          )}
+          {statusText}
         </div>
       </div>
     </div>

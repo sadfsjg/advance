@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 interface StatusIndicatorsProps {
   isConnected: boolean;
@@ -13,12 +13,17 @@ const StatusIndicators: React.FC<StatusIndicatorsProps> = ({
 }) => {
   if (!isConnected) return null;
 
+  // Memoized connection status for better performance
+  const connectionStatus = useMemo(() => {
+    return isSecureConnection ? 'Säker anslutning' : 'Ansluten';
+  }, [isSecureConnection]);
+
   return (
     <div className="flex items-center justify-center space-x-3 sm:space-x-4 lg:space-x-6 mb-4 sm:mb-6">
       <div className="flex items-center space-x-2 text-emerald-600">
         <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
         <span className="text-xs sm:text-sm lg:text-base font-medium">
-          {isSecureConnection ? 'Säker anslutning' : 'Ansluten'}
+          {connectionStatus}
         </span>
       </div>
       {isSpeaking && (

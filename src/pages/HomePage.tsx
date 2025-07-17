@@ -83,134 +83,205 @@ const HomePage: React.FC = () => {
   }, []);
   // Client tool: get_firstandlastname - Agent provides first and last name, we store and return it
   const get_firstandlastname = useCallback(async (params?: { first_name?: string; last_name?: string }) => {
-    console.log('🔧 Agent requested user name via get_firstandlastname tool');
-    console.log('📥 Agent sent (ignoring placeholders):', params);
+    console.log('🔧 [CLIENT TOOL] get_firstandlastname called by agent');
+    console.log('📥 Agent parameters (ignoring placeholders):', params);
     
     // ALWAYS use stored user data - ignore agent placeholders
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    let currentUserInfo = {};
+    
+    try {
+      currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    } catch (error) {
+      console.error('❌ Failed to parse stored user info:', error);
+      localStorage.removeItem('axie_studio_user_info');
+    }
     
     // Use actual stored data only
     const actualFirstName = currentUserInfo.firstName || '';
     const actualLastName = currentUserInfo.lastName || '';
     
-    console.log('✅ Using actual stored data:', { firstName: actualFirstName, lastName: actualLastName });
+    console.log('✅ Retrieved stored name data:', { 
+      firstName: actualFirstName || '(empty)', 
+      lastName: actualLastName || '(empty)' 
+    });
     
     // Send to webhook
-    await sendToWebhook({
+    const webhookSuccess = await sendToWebhook({
       first_name: actualFirstName,
       last_name: actualLastName,
-      full_name: `${actualFirstName} ${actualLastName}`
+      full_name: `${actualFirstName} ${actualLastName}`.trim(),
+      tool_called: 'get_firstandlastname'
     }, 'agent_triggered_get_firstandlastname_tool');
     
     const response = {
       first_name: actualFirstName,
       last_name: actualLastName,
+      full_name: `${actualFirstName} ${actualLastName}`.trim(),
       success: true,
-      message: `User name: ${actualFirstName} ${actualLastName}`
+      message: actualFirstName && actualLastName 
+        ? `User name retrieved: ${actualFirstName} ${actualLastName}` 
+        : 'User name data available',
+      webhook_sent: webhookSuccess
     };
 
-    console.log('📤 Returning to agent:', response);
+    console.log('📤 [CLIENT TOOL] Returning to agent:', response);
     return response;
   }, [sendToWebhook]);
 
   // Client tool: get_email - Agent provides email, we store and return it
   const get_email = useCallback(async (params?: { email?: string }) => {
-    console.log('🔧 Agent requested user email via get_email tool');
-    console.log('📥 Agent sent (ignoring placeholders):', params);
+    console.log('🔧 [CLIENT TOOL] get_email called by agent');
+    console.log('📥 Agent parameters (ignoring placeholders):', params);
     
     // ALWAYS use stored user data - ignore agent placeholders
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    let currentUserInfo = {};
+    
+    try {
+      currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    } catch (error) {
+      console.error('❌ Failed to parse stored user info:', error);
+      localStorage.removeItem('axie_studio_user_info');
+    }
     
     // Use actual stored data only
     const actualEmail = currentUserInfo.email || '';
     
-    console.log('✅ Using actual stored email:', actualEmail);
+    console.log('✅ Retrieved stored email:', actualEmail || '(empty)');
+    
+    // Validate email format if present
+    const isValidEmail = actualEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(actualEmail);
     
     // Send to webhook
-    await sendToWebhook({
-      email: actualEmail
+    const webhookSuccess = await sendToWebhook({
+      email: actualEmail,
+      email_valid: isValidEmail,
+      tool_called: 'get_email'
     }, 'agent_triggered_get_email_tool');
     
     const response = {
       email: actualEmail,
+      email_valid: isValidEmail,
       success: true,
-      message: `User email: ${actualEmail}`
+      message: actualEmail 
+        ? `User email retrieved: ${actualEmail}${isValidEmail ? ' (valid format)' : ' (invalid format)'}` 
+        : 'User email data available',
+      webhook_sent: webhookSuccess
     };
 
-    console.log('📤 Returning to agent:', response);
+    console.log('📤 [CLIENT TOOL] Returning to agent:', response);
     return response;
   }, [sendToWebhook]);
 
   // Client tool: get_info - Agent provides complete info, we store and return it
   const get_info = useCallback(async (params?: { email?: string; first_name?: string; last_name?: string }) => {
-    console.log('🔧 Agent requested complete user info via get_info tool');
-    console.log('📥 Agent sent (ignoring placeholders):', params);
+    console.log('🔧 [CLIENT TOOL] get_info called by agent');
+    console.log('📥 Agent parameters (ignoring placeholders):', params);
     
     // ALWAYS use stored user data - ignore agent placeholders
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    let currentUserInfo = {};
+    
+    try {
+      currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    } catch (error) {
+      console.error('❌ Failed to parse stored user info:', error);
+      localStorage.removeItem('axie_studio_user_info');
+    }
     
     // Use actual stored data only
     const actualFirstName = currentUserInfo.firstName || '';
     const actualLastName = currentUserInfo.lastName || '';
     const actualEmail = currentUserInfo.email || '';
+    const actualFirstMessage = currentUserInfo.firstMessage || '';
     
-    console.log('✅ Using actual stored data:', { firstName: actualFirstName, lastName: actualLastName, email: actualEmail });
+    console.log('✅ Retrieved complete stored data:', { 
+      firstName: actualFirstName || '(empty)', 
+      lastName: actualLastName || '(empty)', 
+      email: actualEmail || '(empty)',
+      firstMessage: actualFirstMessage ? 'present' : '(empty)'
+    });
+    
+    // Validate email format if present
+    const isValidEmail = actualEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(actualEmail);
+    const hasCompleteInfo = actualFirstName && actualLastName && actualEmail && isValidEmail;
     
     // Send to webhook
-    await sendToWebhook({
+    const webhookSuccess = await sendToWebhook({
       email: actualEmail,
+      email_valid: isValidEmail,
       first_name: actualFirstName,
       last_name: actualLastName,
-      full_name: `${actualFirstName} ${actualLastName}`
+      full_name: `${actualFirstName} ${actualLastName}`.trim(),
+      first_message: actualFirstMessage,
+      complete_info: hasCompleteInfo,
+      tool_called: 'get_info'
     }, 'agent_triggered_get_info_tool');
     
     const response = {
       email: actualEmail,
+      email_valid: isValidEmail,
       first_name: actualFirstName,
       last_name: actualLastName,
+      full_name: `${actualFirstName} ${actualLastName}`.trim(),
+      first_message: actualFirstMessage,
+      complete_info: hasCompleteInfo,
       success: true,
-      message: `User info: ${actualFirstName} ${actualLastName} (${actualEmail})`
+      message: hasCompleteInfo 
+        ? `Complete user info: ${actualFirstName} ${actualLastName} (${actualEmail})` 
+        : 'Partial user info available - some fields may be missing',
+      webhook_sent: webhookSuccess
     };
 
-    console.log('📤 Returning to agent:', response);
+    console.log('📤 [CLIENT TOOL] Returning to agent:', response);
     return response;
   }, [sendToWebhook]);
 
   // Client tool: send_first_message - Agent receives the user's preconfigured first message
   const send_first_message = useCallback(async () => {
-    console.log('🔧 Agent requested first message via send_first_message tool');
+    console.log('🔧 [CLIENT TOOL] send_first_message called by agent');
     
     // Get stored user info for first message
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    let currentUserInfo = {};
+    
+    try {
+      currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    } catch (error) {
+      console.error('❌ Failed to parse stored user info:', error);
+      localStorage.removeItem('axie_studio_user_info');
+    }
     
     const firstMessage = currentUserInfo.firstMessage || '';
+    const messageLength = firstMessage.length;
+    const hasMessage = messageLength > 0;
     
-    console.log('✅ Returning first message to agent:', firstMessage || '(no message provided)');
+    console.log('✅ Retrieved first message:', hasMessage ? `"${firstMessage}" (${messageLength} chars)` : '(no message provided)');
     
     // Send to webhook for tracking
-    if (firstMessage) {
-      await sendToWebhook({
-        first_message: firstMessage,
-        user_name: `${currentUserInfo.firstName} ${currentUserInfo.lastName}`,
-        user_email: currentUserInfo.email
-      }, 'agent_requested_first_message');
-    }
+    const webhookSuccess = await sendToWebhook({
+      first_message: firstMessage,
+      message_length: messageLength,
+      has_message: hasMessage,
+      user_name: `${currentUserInfo.firstName || ''} ${currentUserInfo.lastName || ''}`.trim(),
+      user_email: currentUserInfo.email || '',
+      tool_called: 'send_first_message'
+    }, 'agent_requested_first_message');
     
     const response = {
       message: firstMessage,
+      message_length: messageLength,
       success: true,
-      hasMessage: firstMessage.length > 0,
-      info: firstMessage ? `User's first message: "${firstMessage}"` : 'No first message provided by user',
-      instruction: firstMessage ? 'Please respond directly to this message from the user' : 'User did not provide a first message'
+      hasMessage: hasMessage,
+      info: hasMessage ? `User's first message (${messageLength} chars): "${firstMessage}"` : 'No first message provided by user',
+      instruction: hasMessage ? 'Please respond directly to this message from the user' : 'User did not provide a first message - proceed with standard greeting',
+      webhook_sent: webhookSuccess
     };
 
-    console.log('📤 Returning to agent:', response);
+    console.log('📤 [CLIENT TOOL] Returning to agent:', response);
     return response;
-  }, []);
+  }, [sendToWebhook]);
 
   // Memoized agent ID with validation
   const agentId = useMemo(() => {
@@ -219,7 +290,7 @@ const HomePage: React.FC = () => {
       console.error('❌ Axie Studio Agent ID missing in environment variables');
       return null;
     }
-    console.log('✅ Axie Studio Agent ID loaded securely');
+    console.log('✅ Axie Studio Agent ID loaded:', id.substring(0, 20) + '...');
     return id;
   }, []);
 
@@ -232,7 +303,7 @@ const HomePage: React.FC = () => {
       send_first_message
     },
     onConnect: useCallback(() => {
-      console.log('🔗 Connected to Axie Studio AI Assistant');
+      console.log('🔗 Successfully connected to Axie Studio AI Assistant');
       
       setIsSecureConnection(true);
       setConnectionAttempts(0);
@@ -241,7 +312,7 @@ const HomePage: React.FC = () => {
       
     }, []),
     onDisconnect: useCallback(() => {
-      console.log('🔌 Disconnected from Axie Studio AI Assistant');
+      console.log('🔌 Disconnected from Axie Studio AI Assistant - cleaning up');
       setIsSecureConnection(false);
       setCallStartTime(null);
       setIsStartingCall(false);
@@ -252,7 +323,10 @@ const HomePage: React.FC = () => {
       console.log('🗑️ Local user data cleared after call ended');
     }, []),
     onMessage: useCallback((message) => {
-      console.log('💬 Message received:', message);
+      console.log('💬 Message received from agent:', {
+        type: message.type || 'unknown',
+        content: typeof message === 'string' ? message.substring(0, 100) + '...' : message
+      });
     }, []),
     onError: useCallback((error) => {
       console.error('❌ Connection error:', error);
@@ -304,7 +378,7 @@ const HomePage: React.FC = () => {
       return;
     }
 
-    console.log('🚀 Starting secure session...');
+    console.log('🚀 Starting secure session with enhanced WebRTC config...');
     
     try {
       // Enhanced session configuration for better WebRTC stability
@@ -331,7 +405,7 @@ const HomePage: React.FC = () => {
       });
 
       await Promise.race([sessionPromise, timeoutPromise]);
-      console.log('✅ Axie Studio session started successfully');
+      console.log('✅ Axie Studio session started successfully with WebRTC');
       console.log('🔧 Agent can now call get_firstandlastname, get_email, get_info, and send_first_message tools');
       
     } catch (error) {

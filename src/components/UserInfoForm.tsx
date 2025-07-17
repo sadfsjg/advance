@@ -27,10 +27,14 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
 
     if (!firstName.trim()) {
       newErrors.firstName = 'Förnamn krävs';
+    } else if (firstName.trim().length < 2) {
+      newErrors.firstName = 'Förnamn måste vara minst 2 tecken';
     }
 
     if (!lastName.trim()) {
       newErrors.lastName = 'Efternamn krävs';
+    } else if (lastName.trim().length < 2) {
+      newErrors.lastName = 'Efternamn måste vara minst 2 tecken';
     }
 
     if (!email.trim()) {
@@ -40,6 +44,10 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
       if (!emailRegex.test(email.trim())) {
         newErrors.email = 'Vänligen ange en giltig e-postadress';
       }
+    }
+
+    if (firstMessage.trim().length > 500) {
+      newErrors.firstMessage = 'Meddelandet får vara max 500 tecken';
     }
 
     if (!agreedToTerms) {
@@ -52,7 +60,7 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [firstName, lastName, email, agreedToTerms, hasPermission]);
+  }, [firstName, lastName, email, firstMessage, agreedToTerms, hasPermission]);
 
   const requestMicrophonePermission = useCallback(async () => {
     if (isRequestingPermission) return;
@@ -245,6 +253,12 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
             <p className="text-xs text-gray-500 mt-1">
               AI-assistenten kommer att läsa och svara på detta meddelande när samtalet startar
             </p>
+            <p className="text-xs text-gray-400 mt-1">
+              {firstMessage.length}/500 tecken
+            </p>
+            {errors.firstMessage && (
+              <p className="text-red-600 text-xs mt-1">{errors.firstMessage}</p>
+            )}
           </div>
 
           {/* Terms Agreement */}
