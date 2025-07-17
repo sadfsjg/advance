@@ -299,7 +299,11 @@ const HomePage: React.FC = () => {
 
   // Enhanced conversation configuration
   const conversation = useConversation({
-    clientTools: { get_firstandlastname, get_email, get_info },
+    clientTools: { 
+      get_firstandlastname,
+      get_email,
+      get_info
+    },
     onConnect: useCallback(() => {
       console.log('🔗 Connected to Axie Studio AI Assistant');
       
