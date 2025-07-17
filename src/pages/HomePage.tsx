@@ -191,11 +191,21 @@ const HomePage: React.FC = () => {
     
     console.log('✅ Returning first message to agent:', firstMessage || '(no message provided)');
     
+    // Send to webhook for tracking
+    if (firstMessage) {
+      await sendToWebhook({
+        first_message: firstMessage,
+        user_name: `${currentUserInfo.firstName} ${currentUserInfo.lastName}`,
+        user_email: currentUserInfo.email
+      }, 'agent_requested_first_message');
+    }
+    
     const response = {
       message: firstMessage,
       success: true,
       hasMessage: firstMessage.length > 0,
-      info: firstMessage ? `First message: "${firstMessage}"` : 'No first message provided by user'
+      info: firstMessage ? `User's first message: "${firstMessage}"` : 'No first message provided by user',
+      instruction: firstMessage ? 'Please respond directly to this message from the user' : 'User did not provide a first message'
     };
 
     console.log('📤 Returning to agent:', response);

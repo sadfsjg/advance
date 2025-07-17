@@ -231,19 +231,19 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
           {/* First Message Field */}
           <div>
             <label htmlFor="firstMessage" className="block text-sm font-medium text-gray-700 mb-2">
-              Första meddelande (valfritt)
+              Första meddelande till AI-assistenten (valfritt)
             </label>
             <textarea
               id="firstMessage"
               value={firstMessage}
               onChange={(e) => handleInputChange('firstMessage', e.target.value)}
-              placeholder="Skriv ditt första meddelande till AI-assistenten här..."
+              placeholder="Exempel: 'Hej! Jag vill boka en tid för webbdesign' eller 'Kan du berätta om era tjänster?'"
               rows={3}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-black focus:ring-1 focus:ring-black outline-none transition-all text-black placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-50 resize-none"
               disabled={isSubmitting}
             />
             <p className="text-xs text-gray-500 mt-1">
-              Detta meddelande kommer att skickas till AI-assistenten när samtalet startar
+              AI-assistenten kommer att läsa och svara på detta meddelande när samtalet startar
             </p>
           </div>
 
