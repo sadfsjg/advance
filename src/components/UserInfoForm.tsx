@@ -1,71 +1,490 @@
-import React, { useState, useCallback } from 'react';
-import { User, Mail, Phone, Mic, MicOff } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useConversation } from '@elevenlabs/react';
+import VoiceOrb from '../components/VoiceOrb';
+import StatusIndicators from '../components/StatusIndicators';
+import PermissionWarning from '../components/PermissionWarning';
+import UserInfoForm from '../components/UserInfoForm';
+import ErrorBoundary from '../components/ErrorBoundary';
 
-interface UserInfoFormProps {
-  onSubmit: (userInfo: { firstName: string; lastName: string; email: string; firstMessage: string }) => void;
-  isSubmitting?: boolean;
-  onMicrophonePermission?: (hasPermission: boolean) => void;
+// Constants for better performance
+const CONNECTION_TIMEOUT = 8000;
+const RETRY_ATTEMPTS = 3;
+const WEBHOOK_URL = 'https://stefan0987.app.n8n.cloud/webhook/803738bb-c134-4bdb-9720-5b1af902475f';
+const STORAGE_KEY = 'axie_studio_user_info';
+
+interface UserInfo {
+  firstName: string;
+  lastName: string;
+  email: string;
+  firstMessage: string;
 }
 
-const UserInfoForm: React.FC<UserInfoFormProps> = ({ 
-  onSubmit, 
-  isSubmitting = false,
-  onMicrophonePermission
-}) => {
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [firstMessage, setFirstMessage] = useState('');
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
+interface WebhookData {
+  [key: string]: any;
+  timestamp: string;
+  source: string;
+}
+const HomePage: React.FC = () => {
+  // State management with proper typing
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [isSecureConnection, setIsSecureConnection] = useState(false);
+  const [callStartTime, setCallStartTime] = useState<number | null>(null);
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [isStartingCall, setIsStartingCall] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
 
-  const validateForm = useCallback(() => {
-    const newErrors: { [key: string]: string } = {};
-
-    if (!firstName.trim()) {
-      newErrors.firstName = 'Förnamn krävs';
-    } else if (firstName.trim().length < 2) {
-      newErrors.firstName = 'Förnamn måste vara minst 2 tecken';
+  // Store user info in localStorage when it's set
+  useEffect(() => {
+    if (userInfo) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(userInfo));
+      } catch (error) {
+        console.error('❌ Failed to store user info:', error);
+      }
+      console.log('💾 User info stored locally:', userInfo);
     }
+  }, [userInfo]);
 
-    if (!lastName.trim()) {
-      newErrors.lastName = 'Efternamn krävs';
-    } else if (lastName.trim().length < 2) {
-      newErrors.lastName = 'Efternamn måste vara minst 2 tecken';
-    }
-
-    if (!email.trim()) {
-      newErrors.email = 'E-post krävs';
-    } else {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email.trim())) {
-        newErrors.email = 'Vänligen ange en giltig e-postadress';
+  // Load user info from localStorage on mount
+  useEffect(() => {
+    const storedUserInfo = localStorage.getItem(STORAGE_KEY);
+    if (storedUserInfo) {
+      try {
+        const parsed = JSON.parse(storedUserInfo);
+        setUserInfo(parsed);
+        console.log('📂 User info loaded from localStorage:', parsed);
+      } catch (error) {
+        console.error('❌ Failed to parse stored user info:', error);
+        localStorage.removeItem(STORAGE_KEY);
       }
     }
+  }, []);
 
-    if (firstMessage.trim().length > 500) {
-      newErrors.firstMessage = 'Meddelandet får vara max 500 tecken';
+  // Helper function to send data to webhook
+  const sendToWebhook = useCallback(async (data: WebhookData, source: string): Promise<boolean> => {
+    try {
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          ...data,
+          timestamp: new Date().toISOString(),
+          source: source,
+          user_agent: navigator.userAgent,
+          session_id: callStartTime?.toString() || 'unknown'
+        })
+      });
+
+      if (response.ok) {
+        console.log('✅ Webhook data sent successfully:', { source, dataKeys: Object.keys(data) });
+        return true;
+      } else {
+        console.error('❌ Webhook request failed:', response.status, response.statusText);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Error sending data to webhook:', error);
+      return false;
+    }
+  }, []);
+
+  // Helper function to get stored user info safely
+  const getStoredUserInfo = useCallback(() => {
+    try {
+      const storedUserInfo = localStorage.getItem(STORAGE_KEY);
+      return storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    } catch (error) {
+      console.error('❌ Failed to parse stored user info:', error);
+      localStorage.removeItem(STORAGE_KEY);
+      return {};
+    }
+  }, []);
+
+  // Client tool: get_firstandlastname - Agent provides first and last name, we store and return it
+  const get_firstandlastname = useCallback(async (params?: { first_name?: string; last_name?: string }) => {
+    console.log('🔧 [CLIENT TOOL] get_firstandlastname called by agent');
+    console.log('📥 Agent parameters received:', params ? Object.keys(params) : 'none');
+    
+    const currentUserInfo = getStoredUserInfo();
+    
+    // Use actual stored data only
+    const actualFirstName = currentUserInfo.firstName || '';
+    const actualLastName = currentUserInfo.lastName || '';
+    const fullName = `${actualFirstName} ${actualLastName}`.trim();
+    const hasCompleteNames = actualFirstName && actualLastName;
+    
+    console.log('✅ [CLIENT TOOL] Retrieved name data:', { 
+      firstName: actualFirstName || '(not provided)', 
+      lastName: actualLastName || '(not provided)',
+      complete: hasCompleteNames
+    });
+    
+    // Send to webhook
+    const webhookSuccess = await sendToWebhook({
+      first_name: actualFirstName,
+      last_name: actualLastName,
+      full_name: fullName,
+      has_complete_names: hasCompleteNames,
+      tool_called: 'get_firstandlastname',
+      call_duration: callStartTime ? Date.now() - callStartTime : 0
+    }, 'agent_triggered_get_firstandlastname_tool');
+    
+    const response = {
+      first_name: actualFirstName,
+      last_name: actualLastName,
+      full_name: fullName,
+      has_complete_names: hasCompleteNames,
+      success: true,
+      message: hasCompleteNames 
+        ? `Complete name: ${fullName}` 
+        : 'Partial or missing name data',
+      webhook_sent: webhookSuccess
+    };
+
+    console.log('📤 [CLIENT TOOL] Returning to agent:', response);
+    return response;
+  }, [sendToWebhook, getStoredUserInfo, callStartTime]);
+
+  // Client tool: get_email - Agent provides email, we store and return it
+  const get_email = useCallback(async (params?: { email?: string }) => {
+    console.log('🔧 [CLIENT TOOL] get_email called by agent');
+    console.log('📥 Agent parameters received:', params ? Object.keys(params) : 'none');
+    
+    const currentUserInfo = getStoredUserInfo();
+    
+    // Use actual stored data only
+    const actualEmail = currentUserInfo.email || '';
+    const emailLength = actualEmail.length;
+    
+    console.log('✅ [CLIENT TOOL] Retrieved email data:', { 
+      email: actualEmail || '(not provided)',
+      length: emailLength
+    });
+    
+    // Validate email format if present
+    const isValidEmail = actualEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(actualEmail);
+    
+    // Send to webhook
+    const webhookSuccess = await sendToWebhook({
+      email: actualEmail,
+      email_length: emailLength,
+      email_valid: isValidEmail,
+      has_email: !!actualEmail,
+      tool_called: 'get_email',
+      call_duration: callStartTime ? Date.now() - callStartTime : 0
+    }, 'agent_triggered_get_email_tool');
+    
+    const response = {
+      email: actualEmail,
+      email_length: emailLength,
+      email_valid: isValidEmail,
+      has_email: !!actualEmail,
+      success: true,
+      message: actualEmail 
+        ? `Email: ${actualEmail}${isValidEmail ? ' (valid)' : ' (invalid format)'}` 
+        : 'No email provided',
+      webhook_sent: webhookSuccess
+    };
+
+    console.log('📤 [CLIENT TOOL] Returning to agent:', response);
+    return response;
+  }, [sendToWebhook, getStoredUserInfo, callStartTime]);
+
+  // Client tool: get_info - Agent provides complete info, we store and return it
+  const get_info = useCallback(async (params?: { email?: string; first_name?: string; last_name?: string }) => {
+    console.log('🔧 [CLIENT TOOL] get_info called by agent');
+    console.log('📥 Agent parameters received:', params ? Object.keys(params) : 'none');
+    
+    const currentUserInfo = getStoredUserInfo();
+    
+    // Use actual stored data only
+    const actualFirstName = currentUserInfo.firstName || '';
+    const actualLastName = currentUserInfo.lastName || '';
+    const actualEmail = currentUserInfo.email || '';
+    const actualFirstMessage = currentUserInfo.firstMessage || '';
+    const fullName = `${actualFirstName} ${actualLastName}`.trim();
+    
+    console.log('✅ [CLIENT TOOL] Retrieved complete data:', { 
+      firstName: actualFirstName || '(not provided)', 
+      lastName: actualLastName || '(not provided)', 
+      email: actualEmail || '(not provided)',
+      firstMessage: actualFirstMessage ? `present (${actualFirstMessage.length} chars)` : '(not provided)'
+    });
+    
+    // Validate email format if present
+    const isValidEmail = actualEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(actualEmail);
+    const hasCompleteInfo = actualFirstName && actualLastName && actualEmail && isValidEmail;
+    const completionPercentage = [actualFirstName, actualLastName, actualEmail, actualFirstMessage].filter(Boolean).length / 4 * 100;
+    
+    // Send to webhook
+    const webhookSuccess = await sendToWebhook({
+      email: actualEmail,
+      email_length: actualEmail.length,
+      email_valid: isValidEmail,
+      first_name: actualFirstName,
+      last_name: actualLastName,
+      full_name: fullName,
+      first_message: actualFirstMessage,
+      first_message_length: actualFirstMessage.length,
+      complete_info: hasCompleteInfo,
+      completion_percentage: completionPercentage,
+      tool_called: 'get_info',
+      call_duration: callStartTime ? Date.now() - callStartTime : 0
+    }, 'agent_triggered_get_info_tool');
+    
+    const response = {
+      email: actualEmail,
+      email_length: actualEmail.length,
+      email_valid: isValidEmail,
+      first_name: actualFirstName,
+      last_name: actualLastName,
+      full_name: fullName,
+      first_message: actualFirstMessage,
+      first_message_length: actualFirstMessage.length,
+      complete_info: hasCompleteInfo,
+      completion_percentage: completionPercentage,
+      success: true,
+      message: hasCompleteInfo 
+        ? `Complete info: ${fullName} (${actualEmail})` 
+        : `Partial info (${completionPercentage.toFixed(0)}% complete)`,
+      webhook_sent: webhookSuccess
+    };
+
+    console.log('📤 [CLIENT TOOL] Returning to agent:', response);
+    return response;
+  }, [sendToWebhook, getStoredUserInfo, callStartTime]);
+
+  // Client tool: send_first_message - Agent receives the user's preconfigured first message
+  const send_first_message = useCallback(async () => {
+    console.log('🔧 [CLIENT TOOL] send_first_message called by agent');
+    
+    const currentUserInfo = getStoredUserInfo();
+    
+    const firstMessage = currentUserInfo.firstMessage || '';
+    const messageLength = firstMessage.length;
+    const hasMessage = messageLength > 0;
+    const wordCount = hasMessage ? firstMessage.split(/\s+/).length : 0;
+    
+    console.log('✅ [CLIENT TOOL] Retrieved first message:', { 
+      hasMessage,
+      length: messageLength,
+      wordCount,
+      preview: hasMessage ? `"${firstMessage.substring(0, 50)}${messageLength > 50 ? '...' : '}"` : '(not provided)'
+    });
+    
+    // Send to webhook for tracking
+    const webhookSuccess = await sendToWebhook({
+      first_message: firstMessage,
+      message_length: messageLength,
+      word_count: wordCount,
+      has_message: hasMessage,
+      user_name: `${currentUserInfo.firstName || ''} ${currentUserInfo.lastName || ''}`.trim(),
+      user_email: currentUserInfo.email || '',
+      tool_called: 'send_first_message',
+      call_duration: callStartTime ? Date.now() - callStartTime : 0
+    }, 'agent_requested_first_message');
+    
+    const response = {
+      message: firstMessage,
+      message_length: messageLength,
+      word_count: wordCount,
+      success: true,
+      has_message: hasMessage,
+      info: hasMessage 
+        ? `User's message (${messageLength} chars, ${wordCount} words): "${firstMessage}"` 
+        : 'No first message provided',
+      instruction: hasMessage 
+        ? 'Respond directly to this user message' 
+        : 'No first message - proceed with standard greeting',
+      webhook_sent: webhookSuccess
+    };
+
+    console.log('📤 [CLIENT TOOL] Returning to agent:', response);
+    return response;
+  }, [sendToWebhook, getStoredUserInfo, callStartTime]);
+
+  // Memoized agent ID with validation
+  const agentId = useMemo(() => {
+    const id = import.meta.env.VITE_AXIE_STUDIO_AGENT_ID || import.meta.env.VITE_ELEVENLABS_AGENT_ID;
+    if (!id) {
+      console.error('❌ Axie Studio Agent ID missing in environment variables');
+      setLastError('Agent ID missing in environment variables');
+      return null;
+    }
+    console.log('✅ Axie Studio Agent ID loaded:', `${id.substring(0, 8)}...${id.substring(id.length - 4)}`);
+    return id;
+  }, []);
+
+  // Enhanced conversation configuration
+  const conversation = useConversation({
+    clientTools: { 
+      get_firstandlastname,
+      get_email,
+      get_info,
+      send_first_message
+    },
+    onConnect: useCallback(() => {
+      console.log('🔗 Successfully connected to Axie Studio AI Assistant');
+      console.log('🔧 Available client tools: get_firstandlastname, get_email, get_info, send_first_message');
+      
+      setIsSecureConnection(true);
+      setConnectionAttempts(0);
+      setCallStartTime(Date.now());
+      setIsStartingCall(false);
+      setLastError(null);
+      
+    }, []),
+    onDisconnect: useCallback(() => {
+      console.log('🔌 Disconnected from Axie Studio AI Assistant - cleaning up');
+      setIsSecureConnection(false);
+      setCallStartTime(null);
+      setIsStartingCall(false);
+      
+      // Clear stored user data when call ends
+      localStorage.removeItem(STORAGE_KEY);
+      setUserInfo(null);
+      console.log('🗑️ Local user data cleared after call ended');
+    }, []),
+    onMessage: useCallback((message) => {
+      const messageInfo = {
+        type: message.type || 'unknown',
+        timestamp: new Date().toISOString()
+      };
+      
+      if (typeof message === 'string') {
+        messageInfo.content = message.length > 100 ? `${message.substring(0, 100)}...` : message;
+        messageInfo.length = message.length;
+      } else if (message && typeof message === 'object') {
+        messageInfo.keys = Object.keys(message);
+      }
+      
+      console.log('💬 Agent message received:', messageInfo);
+    }, []),
+    onError: useCallback((error) => {
+      const errorMessage = error?.message || 'Unknown connection error';
+      console.error('❌ Connection error:', {
+        message: errorMessage,
+        timestamp: new Date().toISOString(),
+        attempts: connectionAttempts
+      });
+      
+      setLastError(errorMessage);
+      
+      // Handle specific WebRTC DataChannel errors
+      if (errorMessage.includes('DataChannel') || errorMessage.includes('sctp-failure')) {
+        console.warn('🔧 WebRTC DataChannel error detected - attempting recovery');
+        
+        // Force disconnect and clear state
+        setIsSecureConnection(false);
+        setIsStartingCall(false);
+        
+        // Try to end current session cleanly
+        conversation.endSession().catch(() => {
+          console.log('Session cleanup completed');
+        });
+        
+        // Auto-retry with exponential backoff for DataChannel errors
+        if (connectionAttempts < RETRY_ATTEMPTS) {
+          const retryDelay = Math.min(2000 * Math.pow(2, connectionAttempts), 10000);
+          setTimeout(() => {
+            setConnectionAttempts(prev => prev + 1);
+            console.log(`🔄 Retrying connection after DataChannel error (${connectionAttempts + 1}/${RETRY_ATTEMPTS}) in ${retryDelay}ms`);
+            startSession();
+          }, retryDelay);
+        } else {
+          console.error('❌ Max retry attempts reached for DataChannel errors');
+          setLastError('Connection failed after multiple attempts');
+        }
+      } else {
+        setIsSecureConnection(false);
+        setIsStartingCall(false);
+        
+        // Auto-retry logic for other errors
+        if (connectionAttempts < RETRY_ATTEMPTS) {
+          setTimeout(() => {
+            setConnectionAttempts(prev => prev + 1);
+            console.log(`🔄 Retrying connection (${connectionAttempts + 1}/${RETRY_ATTEMPTS})`);
+            startSession();
+          }, 2000);
+        } else {
+          setLastError('Connection failed after multiple attempts');
+        }
+      }
+    }, [connectionAttempts])
+  });
+
+  // Enhanced session management with better error handling
+  const startSession = useCallback(async () => {
+    if (!agentId) {
+      console.error('❌ Cannot start session: Axie Studio Agent ID missing');
+      setIsStartingCall(false);
+      setLastError('Agent ID missing - check environment configuration');
+      return;
     }
 
-    if (!agreedToTerms) {
-      newErrors.terms = 'Du måste godkänna villkoren för att fortsätta';
+    console.log('🚀 Starting Axie Studio session with enhanced WebRTC configuration...');
+    setLastError(null);
+    
+    try {
+      // Enhanced session configuration for better WebRTC stability
+      const sessionConfig = {
+        agentId: agentId,
+        connectionType: 'webrtc' as const
+      };
+
+      const sessionPromise = conversation.startSession(sessionConfig);
+
+      // Add timeout for connection with better error handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`Connection timeout after ${CONNECTION_TIMEOUT}ms`)), CONNECTION_TIMEOUT);
+      });
+
+      await Promise.race([sessionPromise, timeoutPromise]);
+      console.log('✅ Axie Studio session established successfully');
+      
+    } catch (error) {
+      const errorMessage = error?.message || 'Session start failed';
+      console.error('❌ Failed to start Axie Studio session:', errorMessage);
+      setIsStartingCall(false);
+      setLastError(errorMessage);
+      
+      // Enhanced error handling for WebRTC issues
+      if (errorMessage.includes('DataChannel') || errorMessage.includes('timeout')) {
+        console.warn('🔧 WebRTC/DataChannel issue detected during session start');
+        
+        // Clear any existing connection state
+        setIsSecureConnection(false);
+        
+        // Auto-retry with exponential backoff for WebRTC errors
+        if (connectionAttempts < RETRY_ATTEMPTS) {
+          const retryDelay = Math.min(3000 * Math.pow(2, connectionAttempts), 15000);
+          setConnectionAttempts(prev => prev + 1);
+          setTimeout(() => {
+            console.log(`🔄 Retrying session start after WebRTC error (${connectionAttempts + 1}/${RETRY_ATTEMPTS}) in ${retryDelay}ms`);
+            startSession();
+          }, retryDelay);
+        }
+      } else {
+        // Auto-retry on other failures
+        if (connectionAttempts < RETRY_ATTEMPTS) {
+          setConnectionAttempts(prev => prev + 1);
+          setTimeout(() => startSession(), 1000);
+        }
+      }
     }
+  }, [agentId, conversation, connectionAttempts]);
 
-    if (hasPermission === null) {
-      newErrors.microphone = 'Mikrofonbehörighet krävs för röstsamtal';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [firstName, lastName, email, firstMessage, agreedToTerms, hasPermission]);
-
+  // Optimized microphone permission request with better UX
   const requestMicrophonePermission = useCallback(async () => {
     if (isRequestingPermission) return;
     
     setIsRequestingPermission(true);
+    setLastError(null);
     console.log('🎤 Requesting microphone permission...');
     
     try {
@@ -82,36 +501,82 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
       stream.getTracks().forEach(track => track.stop());
       
       setHasPermission(true);
-      onMicrophonePermission?.(true);
       console.log('✅ Microphone permission granted');
-      
-      // Clear microphone error if it exists
-      if (errors.microphone) {
-        setErrors(prev => ({ ...prev, microphone: '' }));
-      }
     } catch (error) {
-      console.error('❌ Microphone permission denied:', error);
+      const errorMessage = error?.message || 'Microphone permission denied';
+      console.error('❌ Microphone permission error:', errorMessage);
       setHasPermission(false);
-      onMicrophonePermission?.(false);
+      setLastError('Microphone access denied - required for voice chat');
     } finally {
       setIsRequestingPermission(false);
     }
-  }, [isRequestingPermission, onMicrophonePermission, errors.microphone]);
+  }, [isRequestingPermission]);
+
+  // Handle user info form submission
+  const handleUserInfoSubmit = useCallback(async (info: UserInfo) => {
+    console.log('👤 User info submitted:', info);
+    setUserInfo(info);
+    setIsStartingCall(true);
+    setLastError(null);
+    
+    // Send to webhook using helper function
+    await sendToWebhook({
+      first_name: info.firstName,
+      last_name: info.lastName,
+      email: info.email,
+      full_name: `${info.firstName} ${info.lastName}`,
+      first_message: info.firstMessage,
+      first_message_length: info.firstMessage.length,
+      word_count: info.firstMessage ? info.firstMessage.split(/\s+/).length : 0,
+      action: 'pre_call_form_submission'
+    }, 'pre_call_form_submission');
+    
+    // Start the session
+    await startSession();
+  }, [sendToWebhook, startSession]);
+
+  // Handle microphone permission callback from form
+  const handleMicrophonePermission = useCallback((granted: boolean) => {
+    setHasPermission(granted);
+    if (!granted) {
+      setLastError('Microphone permission required for voice chat');
+    } else {
+      setLastError(null);
+    }
+    console.log(`🎤 Microphone permission ${granted ? 'granted' : 'denied'} from form`);
+  }, []);
+
+  // Optimized session end with cleanup
+  const handleEndSession = useCallback(async () => {
+    console.log('🛑 Ending Axie Studio session...');
+    setLastError(null);
+    
+    try {
+      await conversation.endSession();
+      console.log('✅ Axie Studio session ended successfully');
+    } catch (error) {
+      console.error('❌ Error ending session:', error?.message || 'Unknown error');
+    } finally {
+      setIsSecureConnection(false);
+      setConnectionAttempts(0);
+      // Clear stored user data when session ends
+      localStorage.removeItem(STORAGE_KEY);
+      setUserInfo(null);
+      console.log('🗑️ Local user data cleared after session ended');
+      setIsStartingCall(false);
+    }
+  }, [conversation]);
 
   // Check initial permissions on mount
-  React.useEffect(() => {
+  useEffect(() => {
     const checkPermissions = async () => {
       if (navigator.permissions) {
         try {
           const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-          const granted = result.state === 'granted';
-          setHasPermission(granted);
-          onMicrophonePermission?.(granted);
+          setHasPermission(result.state === 'granted');
           
           result.addEventListener('change', () => {
-            const newGranted = result.state === 'granted';
-            setHasPermission(newGranted);
-            onMicrophonePermission?.(newGranted);
+            setHasPermission(result.state === 'granted');
           });
         } catch (error) {
           console.warn('⚠️ Could not check microphone permissions:', error);
@@ -120,269 +585,66 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
     };
 
     checkPermissions();
-  }, [onMicrophonePermission]);
+  }, []);
 
-  const handleSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
+  // Security check for HTTPS
+  useEffect(() => {
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+      console.warn('⚠️ Insecure connection detected. HTTPS recommended for production.');
+      setLastError('Insecure connection - HTTPS required for production');
+    }
+  }, []);
+
+  // Memoized connection status
+  const connectionStatus = useMemo(() => {
+    const isConnected = conversation.status === 'connected';
+    const isConnecting = conversation.status !== 'connected' && conversation.status !== 'disconnected';
+    const statusText = conversation.status || 'unknown';
     
-    if (!validateForm()) {
-      return;
-    }
+    return { isConnected, isConnecting, statusText };
+  }, [conversation.status]);
 
-    const userInfo = {
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      email: email.trim(),
-      firstMessage: firstMessage.trim()
-    };
+  const { isConnected, isConnecting, statusText } = connectionStatus;
 
-    onSubmit(userInfo);
-  }, [firstName, lastName, email, validateForm, onSubmit]);
-
-  const handleInputChange = useCallback((field: string, value: string) => {
-    switch (field) {
-      case 'firstName':
-        setFirstName(value);
-        break;
-      case 'lastName':
-        setLastName(value);
-        break;
-      case 'email':
-        setEmail(value);
-        break;
-      case 'firstMessage':
-        setFirstMessage(value);
-        break;
-    }
-    
-    // Clear error when user starts typing
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  }, [errors]);
+  // Show form if user hasn't submitted info yet and not connected
+  if (!userInfo && !isConnected && !isStartingCall) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8">
+        <UserInfoForm 
+          onSubmit={handleUserInfoSubmit}
+          isSubmitting={isStartingCall}
+          onMicrophonePermission={handleMicrophonePermission}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mx-auto mb-3">
-            <User size={24} className="text-white" />
-          </div>
-          <h2 className="text-xl font-semibold text-black mb-2">
-            Välkommen till Axie Studio
-          </h2>
-          <p className="text-gray-600 text-sm">
-            Fyll i dina uppgifter för att starta samtalet med vår AI-assistent
-          </p>
+    <>
+      {/* Main Content */}
+      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8">
+        <div className="text-center w-full max-w-lg">
+          <VoiceOrb
+            isConnected={isConnected}
+            isConnecting={isConnecting}
+            isRequestingPermission={isRequestingPermission}
+            isSpeaking={conversation.isSpeaking}
+            hasPermission={hasPermission}
+            connectionAttempts={connectionAttempts}
+            onCallClick={handleEndSession}
+          />
+
+          <StatusIndicators
+            isConnected={isConnected}
+            isSecureConnection={isSecureConnection}
+            isSpeaking={conversation.isSpeaking}
+          />
+
+          <PermissionWarning hasPermission={hasPermission} />
         </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Name Fields */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <input
-                type="text"
-                value={firstName}
-                onChange={(e) => handleInputChange('firstName', e.target.value)}
-                placeholder="Förnamn"
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-1 focus:ring-black outline-none transition-all text-black placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-50 ${
-                  errors.firstName ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-black'
-                }`}
-                autoComplete="given-name"
-                disabled={isSubmitting}
-              />
-              {errors.firstName && (
-                <p className="text-red-600 text-xs mt-1">{errors.firstName}</p>
-              )}
-            </div>
-            <div>
-              <input
-                type="text"
-                value={lastName}
-                onChange={(e) => handleInputChange('lastName', e.target.value)}
-                placeholder="Efternamn"
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-1 focus:ring-black outline-none transition-all text-black placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-50 ${
-                  errors.lastName ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-black'
-                }`}
-                autoComplete="family-name"
-                disabled={isSubmitting}
-              />
-              {errors.lastName && (
-                <p className="text-red-600 text-xs mt-1">{errors.lastName}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Email Field */}
-          <div>
-            <div className="relative">
-              <Mail size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
-                placeholder="din@email.com"
-                className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-1 focus:ring-black outline-none transition-all text-black placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-50 ${
-                  errors.email ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-black'
-                }`}
-                autoComplete="email"
-                disabled={isSubmitting}
-              />
-            </div>
-            {errors.email && (
-              <p className="text-red-600 text-xs mt-1">{errors.email}</p>
-            )}
-          </div>
-
-          {/* First Message Field */}
-          <div>
-            <label htmlFor="firstMessage" className="block text-sm font-medium text-gray-700 mb-2">
-              Första meddelande till AI-assistenten (valfritt)
-            </label>
-            <textarea
-              id="firstMessage"
-              value={firstMessage}
-              onChange={(e) => handleInputChange('firstMessage', e.target.value)}
-              placeholder="Exempel: 'Hej! Jag vill boka en tid för webbdesign' eller 'Kan du berätta om era tjänster?'"
-              rows={3}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-black focus:ring-1 focus:ring-black outline-none transition-all text-black placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-50 resize-none"
-              disabled={isSubmitting}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              AI-assistenten kommer att läsa och svara på detta meddelande när samtalet startar
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              {firstMessage.length}/500 tecken
-            </p>
-            {errors.firstMessage && (
-              <p className="text-red-600 text-xs mt-1">{errors.firstMessage}</p>
-            )}
-          </div>
-
-          {/* Terms Agreement */}
-          <div className="space-y-3">
-            <div className="flex items-start space-x-3">
-              <input
-                type="checkbox"
-                id="terms"
-                checked={agreedToTerms}
-                onChange={(e) => {
-                  setAgreedToTerms(e.target.checked);
-                  if (errors.terms) {
-                    setErrors(prev => ({ ...prev, terms: '' }));
-                  }
-                }}
-                className="mt-1 w-4 h-4 text-black border-gray-300 rounded focus:ring-black focus:ring-1"
-                disabled={isSubmitting}
-              />
-              <label htmlFor="terms" className="text-sm text-gray-700 leading-relaxed">
-                Genom att fortsätta godkänner du våra{' '}
-                <Link 
-                  to="/terms" 
-                  className="text-black hover:text-gray-700 font-medium underline transition-colors"
-                  target="_blank"
-                >
-                  villkor
-                </Link>
-              </label>
-            </div>
-            {errors.terms && (
-              <p className="text-red-600 text-xs">{errors.terms}</p>
-            )}
-          </div>
-
-          {/* Microphone Permission Section */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="flex items-center space-x-3">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  hasPermission === true ? 'bg-emerald-100' : 
-                  hasPermission === false ? 'bg-red-100' : 'bg-gray-100'
-                }`}>
-                  {hasPermission === true ? (
-                    <Mic size={16} className="text-emerald-600" />
-                  ) : hasPermission === false ? (
-                    <MicOff size={16} className="text-red-600" />
-                  ) : (
-                    <Mic size={16} className="text-gray-400" />
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    Mikrofonbehörighet
-                  </p>
-                  <p className="text-xs text-gray-600">
-                    {hasPermission === true ? 'Beviljad - Redo för röstsamtal' :
-                     hasPermission === false ? 'Nekad - Krävs för röstfunktion' :
-                     'Krävs för AI-röstassistent'}
-                  </p>
-                </div>
-              </div>
-              
-              <button
-                type="button"
-                onClick={requestMicrophonePermission}
-                disabled={isRequestingPermission || hasPermission === true || isSubmitting}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center space-x-2 ${
-                  hasPermission === true 
-                    ? 'bg-emerald-100 text-emerald-700 cursor-default'
-                    : hasPermission === false
-                    ? 'bg-red-100 hover:bg-red-200 text-red-700'
-                    : 'bg-black hover:bg-gray-800 text-white'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                {isRequestingPermission ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                    <span>Begär...</span>
-                  </>
-                ) : hasPermission === true ? (
-                  <>
-                    <Mic size={14} />
-                    <span>Beviljad</span>
-                  </>
-                ) : hasPermission === false ? (
-                  <>
-                    <MicOff size={14} />
-                    <span>Försök igen</span>
-                  </>
-                ) : (
-                  <>
-                    <Mic size={14} />
-                    <span>Aktivera</span>
-                  </>
-                )}
-              </button>
-            </div>
-            {errors.microphone && (
-              <p className="text-red-600 text-xs">{errors.microphone}</p>
-            )}
-          </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isSubmitting || hasPermission !== true}
-            className="w-full px-4 py-3 bg-black hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
-          >
-            {isSubmitting ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>Startar samtal...</span>
-              </>
-            ) : (
-              <>
-                <Phone size={16} />
-                <span>Starta AI-samtal</span>
-              </>
-            )}
-          </button>
-        </form>
       </div>
-    </div>
+    </>
   );
 };
 
-export default UserInfoForm;
+export default HomePage;
