@@ -229,74 +229,6 @@ const HomePage: React.FC = () => {
     return id;
   }, []);
 
-  // Enhanced session management with better error handling
-  const startSession = useCallback(async () => {
-    if (!agentId) {
-      console.error('❌ Cannot start session: Axie Studio Agent ID missing');
-      setIsStartingCall(false);
-      return;
-    }
-
-    console.log('🚀 Starting secure session...');
-    
-    try {
-      // Enhanced session configuration for better WebRTC stability
-      const sessionConfig = {
-        agentId: agentId,
-        connectionType: 'webrtc' as const,
-        // Add WebRTC configuration for better DataChannel reliability
-        webrtcConfig: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ],
-          iceCandidatePoolSize: 10,
-          bundlePolicy: 'max-bundle' as const,
-          rtcpMuxPolicy: 'require' as const
-        }
-      };
-
-      const sessionPromise = conversation.startSession(sessionConfig);
-
-      // Add timeout for connection with better error handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Axie Studio connection timeout - WebRTC setup failed')), CONNECTION_TIMEOUT);
-      });
-
-      await Promise.race([sessionPromise, timeoutPromise]);
-      console.log('✅ Axie Studio session started successfully');
-      console.log('🔧 Agent can now call get_firstandlastname, get_email, and get_info tools to receive and store user information');
-      
-    } catch (error) {
-      console.error('❌ Failed to start Axie Studio session:', error);
-      setIsStartingCall(false);
-      
-      // Enhanced error handling for WebRTC issues
-      if (error.message?.includes('DataChannel') || error.message?.includes('timeout')) {
-        console.warn('🔧 WebRTC/DataChannel issue detected during session start');
-        
-        // Clear any existing connection state
-        setIsSecureConnection(false);
-        
-        // Auto-retry with exponential backoff for WebRTC errors
-        if (connectionAttempts < RETRY_ATTEMPTS) {
-          const retryDelay = Math.min(3000 * Math.pow(2, connectionAttempts), 15000);
-          setConnectionAttempts(prev => prev + 1);
-          setTimeout(() => {
-            console.log(`🔄 Retrying session start after WebRTC error (${connectionAttempts + 1}/${RETRY_ATTEMPTS}) in ${retryDelay}ms`);
-            startSession();
-          }, retryDelay);
-        }
-      } else {
-        // Auto-retry on other failures
-        if (connectionAttempts < RETRY_ATTEMPTS) {
-          setConnectionAttempts(prev => prev + 1);
-          setTimeout(() => startSession(), 1000);
-        }
-      }
-    }
-  }, [agentId, conversation, connectionAttempts]);
-
   // Enhanced conversation configuration
   const conversation = useConversation({
     clientTools: { 
@@ -366,8 +298,76 @@ const HomePage: React.FC = () => {
           }, 2000);
         }
       }
-    }, [connectionAttempts, conversation, startSession])
+    }, [connectionAttempts])
   });
+
+  // Enhanced session management with better error handling
+  const startSession = useCallback(async () => {
+    if (!agentId) {
+      console.error('❌ Cannot start session: Axie Studio Agent ID missing');
+      setIsStartingCall(false);
+      return;
+    }
+
+    console.log('🚀 Starting secure session...');
+    
+    try {
+      // Enhanced session configuration for better WebRTC stability
+      const sessionConfig = {
+        agentId: agentId,
+        connectionType: 'webrtc' as const,
+        // Add WebRTC configuration for better DataChannel reliability
+        webrtcConfig: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ],
+          iceCandidatePoolSize: 10,
+          bundlePolicy: 'max-bundle' as const,
+          rtcpMuxPolicy: 'require' as const
+        }
+      };
+
+      const sessionPromise = conversation.startSession(sessionConfig);
+
+      // Add timeout for connection with better error handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Axie Studio connection timeout - WebRTC setup failed')), CONNECTION_TIMEOUT);
+      });
+
+      await Promise.race([sessionPromise, timeoutPromise]);
+      console.log('✅ Axie Studio session started successfully');
+      console.log('🔧 Agent can now call get_firstandlastname, get_email, and get_info tools to receive and store user information');
+      
+    } catch (error) {
+      console.error('❌ Failed to start Axie Studio session:', error);
+      setIsStartingCall(false);
+      
+      // Enhanced error handling for WebRTC issues
+      if (error.message?.includes('DataChannel') || error.message?.includes('timeout')) {
+        console.warn('🔧 WebRTC/DataChannel issue detected during session start');
+        
+        // Clear any existing connection state
+        setIsSecureConnection(false);
+        
+        // Auto-retry with exponential backoff for WebRTC errors
+        if (connectionAttempts < RETRY_ATTEMPTS) {
+          const retryDelay = Math.min(3000 * Math.pow(2, connectionAttempts), 15000);
+          setConnectionAttempts(prev => prev + 1);
+          setTimeout(() => {
+            console.log(`🔄 Retrying session start after WebRTC error (${connectionAttempts + 1}/${RETRY_ATTEMPTS}) in ${retryDelay}ms`);
+            startSession();
+          }, retryDelay);
+        }
+      } else {
+        // Auto-retry on other failures
+        if (connectionAttempts < RETRY_ATTEMPTS) {
+          setConnectionAttempts(prev => prev + 1);
+          setTimeout(() => startSession(), 1000);
+        }
+      }
+    }
+  }, [agentId, conversation, connectionAttempts]);
 
   // Optimized microphone permission request with better UX
   const requestMicrophonePermission = useCallback(async () => {
