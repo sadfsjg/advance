@@ -82,33 +82,19 @@ const HomePage: React.FC = () => {
     }
   }, []);
   // Client tool: get_firstandlastname - Agent provides first and last name, we store and return it
-  const get_firstandlastname = useCallback(async (params: { first_name: string; last_name: string }) => {
+  const get_firstandlastname = useCallback(async (params?: { first_name?: string; last_name?: string }) => {
     console.log('🔧 Agent requested user name via get_firstandlastname tool');
-    console.log('📥 Received from agent:', params);
+    console.log('📥 Agent sent (ignoring placeholders):', params);
     
-    // Get stored user info - use actual stored data, not agent placeholders
+    // ALWAYS use stored user data - ignore agent placeholders
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    let currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
     
-    // Always use stored data if available, ignore agent placeholders
+    // Use actual stored data only
     const actualFirstName = currentUserInfo.firstName || '';
     const actualLastName = currentUserInfo.lastName || '';
     
-    // If no stored data, this indicates a problem - log it
-    if (!actualFirstName || !actualLastName) {
-      console.warn('⚠️ No stored user name found, agent may be sending placeholders');
-    }
-    
-    const updatedUserInfo = {
-      firstName: actualFirstName,
-      lastName: actualLastName,
-      email: currentUserInfo.email || '',
-      firstMessage: currentUserInfo.firstMessage || ''
-    };
-    
-    // Store updated info
-    localStorage.setItem('axie_studio_user_info', JSON.stringify(updatedUserInfo));
-    setUserInfo(updatedUserInfo);
+    console.log('✅ Using actual stored data:', { firstName: actualFirstName, lastName: actualLastName });
     
     // Send to webhook
     await sendToWebhook({
@@ -121,7 +107,7 @@ const HomePage: React.FC = () => {
       first_name: actualFirstName,
       last_name: actualLastName,
       success: true,
-      message: 'User name received and stored successfully'
+      message: `User name: ${actualFirstName} ${actualLastName}`
     };
 
     console.log('📤 Returning to agent:', response);
@@ -129,32 +115,18 @@ const HomePage: React.FC = () => {
   }, [sendToWebhook]);
 
   // Client tool: get_email - Agent provides email, we store and return it
-  const get_email = useCallback(async (params: { email: string }) => {
+  const get_email = useCallback(async (params?: { email?: string }) => {
     console.log('🔧 Agent requested user email via get_email tool');
-    console.log('📥 Received from agent:', params);
+    console.log('📥 Agent sent (ignoring placeholders):', params);
     
-    // Get stored user info - use actual stored data, not agent placeholders
+    // ALWAYS use stored user data - ignore agent placeholders
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    let currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
     
-    // Always use stored data if available, ignore agent placeholders
+    // Use actual stored data only
     const actualEmail = currentUserInfo.email || '';
     
-    // If no stored data, this indicates a problem - log it
-    if (!actualEmail) {
-      console.warn('⚠️ No stored user email found, agent may be sending placeholders');
-    }
-    
-    const updatedUserInfo = {
-      firstName: currentUserInfo.firstName || '',
-      lastName: currentUserInfo.lastName || '',
-      email: actualEmail,
-      firstMessage: currentUserInfo.firstMessage || ''
-    };
-    
-    // Store updated info
-    localStorage.setItem('axie_studio_user_info', JSON.stringify(updatedUserInfo));
-    setUserInfo(updatedUserInfo);
+    console.log('✅ Using actual stored email:', actualEmail);
     
     // Send to webhook
     await sendToWebhook({
@@ -164,7 +136,7 @@ const HomePage: React.FC = () => {
     const response = {
       email: actualEmail,
       success: true,
-      message: 'User email received and stored successfully'
+      message: `User email: ${actualEmail}`
     };
 
     console.log('📤 Returning to agent:', response);
@@ -172,34 +144,20 @@ const HomePage: React.FC = () => {
   }, [sendToWebhook]);
 
   // Client tool: get_info - Agent provides complete info, we store and return it
-  const get_info = useCallback(async (params: { email: string; first_name: string; last_name: string }) => {
+  const get_info = useCallback(async (params?: { email?: string; first_name?: string; last_name?: string }) => {
     console.log('🔧 Agent requested complete user info via get_info tool');
-    console.log('📥 Received from agent:', params);
+    console.log('📥 Agent sent (ignoring placeholders):', params);
     
-    // Get stored user info - use actual stored data, not agent placeholders
+    // ALWAYS use stored user data - ignore agent placeholders
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    let currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
     
-    // Always use stored data if available, ignore agent placeholders
+    // Use actual stored data only
     const actualFirstName = currentUserInfo.firstName || '';
     const actualLastName = currentUserInfo.lastName || '';
     const actualEmail = currentUserInfo.email || '';
     
-    // If no stored data, this indicates a problem - log it
-    if (!actualFirstName || !actualLastName || !actualEmail) {
-      console.warn('⚠️ Incomplete stored user info found, agent may be sending placeholders');
-    }
-    
-    const updatedUserInfo = {
-      firstName: actualFirstName,
-      lastName: actualLastName,
-      email: actualEmail,
-      firstMessage: currentUserInfo.firstMessage || ''
-    };
-    
-    // Store updated info
-    localStorage.setItem('axie_studio_user_info', JSON.stringify(updatedUserInfo));
-    setUserInfo(updatedUserInfo);
+    console.log('✅ Using actual stored data:', { firstName: actualFirstName, lastName: actualLastName, email: actualEmail });
     
     // Send to webhook
     await sendToWebhook({
@@ -214,7 +172,7 @@ const HomePage: React.FC = () => {
       first_name: actualFirstName,
       last_name: actualLastName,
       success: true,
-      message: 'Complete user info received and stored successfully'
+      message: `User info: ${actualFirstName} ${actualLastName} (${actualEmail})`
     };
 
     console.log('📤 Returning to agent:', response);
@@ -225,18 +183,19 @@ const HomePage: React.FC = () => {
   const send_first_message = useCallback(async () => {
     console.log('🔧 Agent requested first message via send_first_message tool');
     
-    // Get stored user info
+    // Get stored user info for first message
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    let currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
     
     const firstMessage = currentUserInfo.firstMessage || '';
     
-    console.log('📤 Sending first message to agent:', firstMessage);
+    console.log('✅ Returning first message to agent:', firstMessage || '(no message provided)');
     
     const response = {
       message: firstMessage,
       success: true,
-      hasMessage: firstMessage.length > 0
+      hasMessage: firstMessage.length > 0,
+      info: firstMessage ? `First message: "${firstMessage}"` : 'No first message provided by user'
     };
 
     console.log('📤 Returning to agent:', response);
