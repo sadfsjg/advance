@@ -180,9 +180,8 @@ const HomePage: React.FC = () => {
   }, [sendToWebhook]);
 
   // Client tool: send_first_message - Agent receives the user's preconfigured first message
-  const send_first_message = useCallback(async (params?: { send_first_message?: string }) => {
+  const send_first_message = useCallback(async () => {
     console.log('🔧 Agent requested first message via send_first_message tool');
-    console.log('📥 Agent sent parameter (ignoring):', params);
     
     // Get stored user info for first message
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
@@ -190,7 +189,7 @@ const HomePage: React.FC = () => {
     
     const firstMessage = currentUserInfo.firstMessage || '';
     
-    console.log('✅ Using actual stored first message:', firstMessage || '(no message provided)');
+    console.log('✅ Returning first message to agent:', firstMessage || '(no message provided)');
     
     // Send to webhook for tracking
     if (firstMessage) {
@@ -203,16 +202,15 @@ const HomePage: React.FC = () => {
     
     const response = {
       message: firstMessage,
-      send_first_message: firstMessage, // Return in the expected parameter format
       success: true,
       hasMessage: firstMessage.length > 0,
       info: firstMessage ? `User's first message: "${firstMessage}"` : 'No first message provided by user',
-      instruction: firstMessage ? 'IMPORTANT: Please respond directly to this user message and help them with their request' : 'User did not provide a first message, proceed with general greeting'
+      instruction: firstMessage ? 'Please respond directly to this message from the user' : 'User did not provide a first message'
     };
 
     console.log('📤 Returning to agent:', response);
     return response;
-  }, [sendToWebhook]);
+  }, []);
 
   // Memoized agent ID with validation
   const agentId = useMemo(() => {
