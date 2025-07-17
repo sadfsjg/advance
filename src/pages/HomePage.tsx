@@ -16,6 +16,7 @@ interface UserInfo {
   firstName: string;
   lastName: string;
   email: string;
+  firstMessage: string;
 }
 
 const HomePage: React.FC = () => {
@@ -101,7 +102,8 @@ const HomePage: React.FC = () => {
     const updatedUserInfo = {
       firstName: actualFirstName,
       lastName: actualLastName,
-      email: currentUserInfo.email || ''
+      email: currentUserInfo.email || '',
+      firstMessage: currentUserInfo.firstMessage || ''
     };
     
     // Store updated info
@@ -146,7 +148,8 @@ const HomePage: React.FC = () => {
     const updatedUserInfo = {
       firstName: currentUserInfo.firstName || '',
       lastName: currentUserInfo.lastName || '',
-      email: actualEmail
+      email: actualEmail,
+      firstMessage: currentUserInfo.firstMessage || ''
     };
     
     // Store updated info
@@ -190,7 +193,8 @@ const HomePage: React.FC = () => {
     const updatedUserInfo = {
       firstName: actualFirstName,
       lastName: actualLastName,
-      email: actualEmail
+      email: actualEmail,
+      firstMessage: currentUserInfo.firstMessage || ''
     };
     
     // Store updated info
@@ -217,6 +221,27 @@ const HomePage: React.FC = () => {
     return response;
   }, [sendToWebhook]);
 
+  // Client tool: send_first_message - Agent receives the user's preconfigured first message
+  const send_first_message = useCallback(async () => {
+    console.log('🔧 Agent requested first message via send_first_message tool');
+    
+    // Get stored user info
+    const storedUserInfo = localStorage.getItem('axie_studio_user_info');
+    let currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    
+    const firstMessage = currentUserInfo.firstMessage || '';
+    
+    console.log('📤 Sending first message to agent:', firstMessage);
+    
+    const response = {
+      message: firstMessage,
+      success: true,
+      hasMessage: firstMessage.length > 0
+    };
+
+    console.log('📤 Returning to agent:', response);
+    return response;
+  }, []);
 
   // Memoized agent ID with validation
   const agentId = useMemo(() => {
@@ -234,7 +259,8 @@ const HomePage: React.FC = () => {
     clientTools: { 
       get_firstandlastname,
       get_email,
-      get_info
+      get_info,
+      send_first_message
     },
     onConnect: useCallback(() => {
       console.log('🔗 Connected to Axie Studio AI Assistant');
@@ -337,7 +363,7 @@ const HomePage: React.FC = () => {
 
       await Promise.race([sessionPromise, timeoutPromise]);
       console.log('✅ Axie Studio session started successfully');
-      console.log('🔧 Agent can now call get_firstandlastname, get_email, and get_info tools to receive and store user information');
+      console.log('🔧 Agent can now call get_firstandlastname, get_email, get_info, and send_first_message tools');
       
     } catch (error) {
       console.error('❌ Failed to start Axie Studio session:', error);
@@ -411,6 +437,7 @@ const HomePage: React.FC = () => {
       last_name: info.lastName,
       email: info.email,
       full_name: `${info.firstName} ${info.lastName}`,
+      first_message: info.firstMessage,
       prompt: 'User submitted information before starting AI call'
     }, 'pre_call_form_submission');
     
