@@ -28,22 +28,6 @@ const HomePage: React.FC = () => {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [isStartingCall, setIsStartingCall] = useState(false);
 
-  // Memoized agent ID with validation - must be before useConversation
-  const agentId = useMemo(() => {
-    const id = import.meta.env.VITE_AXIE_STUDIO_AGENT_ID || import.meta.env.VITE_ELEVENLABS_AGENT_ID;
-    if (!id) {
-      console.error('❌ Axie Studio Agent ID missing in environment variables');
-      return null;
-    }
-    console.log('✅ Axie Studio Agent ID loaded securely');
-    return id;
-  }, []);
-
-  // Initialize conversation hook early - before any callbacks that depend on it
-  const conversation = useConversation({
-    clientTools: {},  // Will be updated after client tools are defined
-  });
-
   // Store user info in localStorage when it's set
   useEffect(() => {
     if (userInfo) {
@@ -233,14 +217,17 @@ const HomePage: React.FC = () => {
     return response;
   }, [sendToWebhook]);
 
-  // Update conversation with client tools after they're defined
-  useEffect(() => {
-    if (conversation && typeof conversation.updateConfig === 'function') {
-      conversation.updateConfig({
-        clientTools: { get_firstandlastname, get_email, get_info }
-      });
+
+  // Memoized agent ID with validation
+  const agentId = useMemo(() => {
+    const id = import.meta.env.VITE_AXIE_STUDIO_AGENT_ID || import.meta.env.VITE_ELEVENLABS_AGENT_ID;
+    if (!id) {
+      console.error('❌ Axie Studio Agent ID missing in environment variables');
+      return null;
     }
-  }, [conversation, get_firstandlastname, get_email, get_info]);
+    console.log('✅ Axie Studio Agent ID loaded securely');
+    return id;
+  }, []);
 
   // Enhanced session management with better error handling
   const startSession = useCallback(async () => {
@@ -310,39 +297,19 @@ const HomePage: React.FC = () => {
     }
   }, [agentId, conversation, connectionAttempts]);
 
-  // Optimized session end with cleanup
-  const handleEndSession = useCallback(async () => {
-    console.log('🛑 Ending Axie Studio session...');
-    
-    try {
-      await conversation.endSession();
-      console.log('✅ Axie Studio session ended successfully');
-    } catch (error) {
-      console.error('❌ Error ending Axie Studio session:', error);
-    } finally {
-      setIsSecureConnection(false);
-      setConnectionAttempts(0);
-      // Clear stored user data when session ends
-      localStorage.removeItem('axie_studio_user_info');
-      setUserInfo(null);
-      console.log('🗑️ Local user data cleared after session ended');
-      setIsStartingCall(false);
-    }
-  }, [conversation]);
-
-  // Enhanced conversation event handlers
-  useEffect(() => {
-    if (!conversation) return;
-
-    const handleConnect = () => {
+  // Enhanced conversation configuration
+  const conversation = useConversation({
+    clientTools: { get_firstandlastname, get_email, get_info },
+    onConnect: useCallback(() => {
       console.log('🔗 Connected to Axie Studio AI Assistant');
+      
       setIsSecureConnection(true);
       setConnectionAttempts(0);
       setCallStartTime(Date.now());
       setIsStartingCall(false);
-    };
-
-    const handleDisconnect = () => {
+      
+    }, []),
+    onDisconnect: useCallback(() => {
       console.log('🔌 Disconnected from Axie Studio AI Assistant');
       setIsSecureConnection(false);
       setCallStartTime(null);
@@ -352,13 +319,11 @@ const HomePage: React.FC = () => {
       localStorage.removeItem('axie_studio_user_info');
       setUserInfo(null);
       console.log('🗑️ Local user data cleared after call ended');
-    };
-
-    const handleMessage = (message: any) => {
+    }, []),
+    onMessage: useCallback((message) => {
       console.log('💬 Message received:', message);
-    };
-
-    const handleError = (error: any) => {
+    }, []),
+    onError: useCallback((error) => {
       console.error('❌ Connection error:', error);
       
       // Handle specific WebRTC DataChannel errors
@@ -397,15 +362,8 @@ const HomePage: React.FC = () => {
           }, 2000);
         }
       }
-    };
-
-    // Set up event handlers
-    if (conversation.onConnect) conversation.onConnect = handleConnect;
-    if (conversation.onDisconnect) conversation.onDisconnect = handleDisconnect;
-    if (conversation.onMessage) conversation.onMessage = handleMessage;
-    if (conversation.onError) conversation.onError = handleError;
-
-  }, [conversation, connectionAttempts, startSession]);
+    }, [connectionAttempts, conversation, startSession])
+  });
 
   // Optimized microphone permission request with better UX
   const requestMicrophonePermission = useCallback(async () => {
@@ -461,6 +419,26 @@ const HomePage: React.FC = () => {
     setHasPermission(granted);
     console.log(`🎤 Microphone permission ${granted ? 'granted' : 'denied'} from form`);
   }, []);
+
+  // Optimized session end with cleanup
+  const handleEndSession = useCallback(async () => {
+    console.log('🛑 Ending Axie Studio session...');
+    
+    try {
+      await conversation.endSession();
+      console.log('✅ Axie Studio session ended successfully');
+    } catch (error) {
+      console.error('❌ Error ending Axie Studio session:', error);
+    } finally {
+      setIsSecureConnection(false);
+      setConnectionAttempts(0);
+      // Clear stored user data when session ends
+      localStorage.removeItem('axie_studio_user_info');
+      setUserInfo(null);
+      console.log('🗑️ Local user data cleared after session ended');
+      setIsStartingCall(false);
+    }
+  }, [conversation]);
 
   // Check initial permissions on mount
   useEffect(() => {
