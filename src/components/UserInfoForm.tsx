@@ -3,7 +3,7 @@ import { User, Mail, Phone, Mic, MicOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface UserInfoFormProps {
-  onSubmit: (userInfo: { firstName: string; lastName: string; email: string }) => void;
+  onSubmit: (userInfo: { firstName: string; lastName: string; email: string; firstMessage: string }) => void;
   isSubmitting?: boolean;
   onMicrophonePermission?: (hasPermission: boolean) => void;
 }
@@ -16,6 +16,7 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [firstMessage, setFirstMessage] = useState('');
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
@@ -123,7 +124,8 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
     const userInfo = {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      email: email.trim()
+      email: email.trim(),
+      firstMessage: firstMessage.trim()
     };
 
     onSubmit(userInfo);
@@ -139,6 +141,9 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
         break;
       case 'email':
         setEmail(value);
+        break;
+      case 'firstMessage':
+        setFirstMessage(value);
         break;
     }
     
@@ -221,6 +226,25 @@ const UserInfoForm: React.FC<UserInfoFormProps> = ({
             {errors.email && (
               <p className="text-red-600 text-xs mt-1">{errors.email}</p>
             )}
+          </div>
+
+          {/* First Message Field */}
+          <div>
+            <label htmlFor="firstMessage" className="block text-sm font-medium text-gray-700 mb-2">
+              Första meddelande till AI-assistenten (valfritt)
+            </label>
+            <textarea
+              id="firstMessage"
+              value={firstMessage}
+              onChange={(e) => handleInputChange('firstMessage', e.target.value)}
+              placeholder="Exempel: 'Hej! Jag vill boka en tid för webbdesign' eller 'Kan du berätta om era tjänster?'"
+              rows={3}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-black focus:ring-1 focus:ring-black outline-none transition-all text-black placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-50 resize-none"
+              disabled={isSubmitting}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              AI-assistenten kommer att läsa och svara på detta meddelande när samtalet startar
+            </p>
           </div>
 
           {/* Terms Agreement */}

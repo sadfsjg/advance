@@ -16,6 +16,7 @@ interface UserInfo {
   firstName: string;
   lastName: string;
   email: string;
+  firstMessage: string;
 }
 
 const HomePage: React.FC = () => {
@@ -81,32 +82,19 @@ const HomePage: React.FC = () => {
     }
   }, []);
   // Client tool: get_firstandlastname - Agent provides first and last name, we store and return it
-  const get_firstandlastname = useCallback(async (params: { first_name: string; last_name: string }) => {
+  const get_firstandlastname = useCallback(async (params?: { first_name?: string; last_name?: string }) => {
     console.log('🔧 Agent requested user name via get_firstandlastname tool');
-    console.log('📥 Received from agent:', params);
+    console.log('📥 Agent sent (ignoring placeholders):', params);
     
-    // Get stored user info - use actual stored data, not agent placeholders
+    // ALWAYS use stored user data - ignore agent placeholders
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    let currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
     
-    // Always use stored data if available, ignore agent placeholders
+    // Use actual stored data only
     const actualFirstName = currentUserInfo.firstName || '';
     const actualLastName = currentUserInfo.lastName || '';
     
-    // If no stored data, this indicates a problem - log it
-    if (!actualFirstName || !actualLastName) {
-      console.warn('⚠️ No stored user name found, agent may be sending placeholders');
-    }
-    
-    const updatedUserInfo = {
-      firstName: actualFirstName,
-      lastName: actualLastName,
-      email: currentUserInfo.email || ''
-    };
-    
-    // Store updated info
-    localStorage.setItem('axie_studio_user_info', JSON.stringify(updatedUserInfo));
-    setUserInfo(updatedUserInfo);
+    console.log('✅ Using actual stored data:', { firstName: actualFirstName, lastName: actualLastName });
     
     // Send to webhook
     await sendToWebhook({
@@ -119,7 +107,7 @@ const HomePage: React.FC = () => {
       first_name: actualFirstName,
       last_name: actualLastName,
       success: true,
-      message: 'User name received and stored successfully'
+      message: `User name: ${actualFirstName} ${actualLastName}`
     };
 
     console.log('📤 Returning to agent:', response);
@@ -127,31 +115,18 @@ const HomePage: React.FC = () => {
   }, [sendToWebhook]);
 
   // Client tool: get_email - Agent provides email, we store and return it
-  const get_email = useCallback(async (params: { email: string }) => {
+  const get_email = useCallback(async (params?: { email?: string }) => {
     console.log('🔧 Agent requested user email via get_email tool');
-    console.log('📥 Received from agent:', params);
+    console.log('📥 Agent sent (ignoring placeholders):', params);
     
-    // Get stored user info - use actual stored data, not agent placeholders
+    // ALWAYS use stored user data - ignore agent placeholders
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    let currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
     
-    // Always use stored data if available, ignore agent placeholders
+    // Use actual stored data only
     const actualEmail = currentUserInfo.email || '';
     
-    // If no stored data, this indicates a problem - log it
-    if (!actualEmail) {
-      console.warn('⚠️ No stored user email found, agent may be sending placeholders');
-    }
-    
-    const updatedUserInfo = {
-      firstName: currentUserInfo.firstName || '',
-      lastName: currentUserInfo.lastName || '',
-      email: actualEmail
-    };
-    
-    // Store updated info
-    localStorage.setItem('axie_studio_user_info', JSON.stringify(updatedUserInfo));
-    setUserInfo(updatedUserInfo);
+    console.log('✅ Using actual stored email:', actualEmail);
     
     // Send to webhook
     await sendToWebhook({
@@ -161,7 +136,7 @@ const HomePage: React.FC = () => {
     const response = {
       email: actualEmail,
       success: true,
-      message: 'User email received and stored successfully'
+      message: `User email: ${actualEmail}`
     };
 
     console.log('📤 Returning to agent:', response);
@@ -169,33 +144,20 @@ const HomePage: React.FC = () => {
   }, [sendToWebhook]);
 
   // Client tool: get_info - Agent provides complete info, we store and return it
-  const get_info = useCallback(async (params: { email: string; first_name: string; last_name: string }) => {
+  const get_info = useCallback(async (params?: { email?: string; first_name?: string; last_name?: string }) => {
     console.log('🔧 Agent requested complete user info via get_info tool');
-    console.log('📥 Received from agent:', params);
+    console.log('📥 Agent sent (ignoring placeholders):', params);
     
-    // Get stored user info - use actual stored data, not agent placeholders
+    // ALWAYS use stored user data - ignore agent placeholders
     const storedUserInfo = localStorage.getItem('axie_studio_user_info');
-    let currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
     
-    // Always use stored data if available, ignore agent placeholders
+    // Use actual stored data only
     const actualFirstName = currentUserInfo.firstName || '';
     const actualLastName = currentUserInfo.lastName || '';
     const actualEmail = currentUserInfo.email || '';
     
-    // If no stored data, this indicates a problem - log it
-    if (!actualFirstName || !actualLastName || !actualEmail) {
-      console.warn('⚠️ Incomplete stored user info found, agent may be sending placeholders');
-    }
-    
-    const updatedUserInfo = {
-      firstName: actualFirstName,
-      lastName: actualLastName,
-      email: actualEmail
-    };
-    
-    // Store updated info
-    localStorage.setItem('axie_studio_user_info', JSON.stringify(updatedUserInfo));
-    setUserInfo(updatedUserInfo);
+    console.log('✅ Using actual stored data:', { firstName: actualFirstName, lastName: actualLastName, email: actualEmail });
     
     // Send to webhook
     await sendToWebhook({
@@ -210,13 +172,45 @@ const HomePage: React.FC = () => {
       first_name: actualFirstName,
       last_name: actualLastName,
       success: true,
-      message: 'Complete user info received and stored successfully'
+      message: `User info: ${actualFirstName} ${actualLastName} (${actualEmail})`
     };
 
     console.log('📤 Returning to agent:', response);
     return response;
   }, [sendToWebhook]);
 
+  // Client tool: send_first_message - Agent receives the user's preconfigured first message
+  const send_first_message = useCallback(async () => {
+    console.log('🔧 Agent requested first message via send_first_message tool');
+    
+    // Get stored user info for first message
+    const storedUserInfo = localStorage.getItem('axie_studio_user_info');
+    const currentUserInfo = storedUserInfo ? JSON.parse(storedUserInfo) : {};
+    
+    const firstMessage = currentUserInfo.firstMessage || '';
+    
+    console.log('✅ Returning first message to agent:', firstMessage || '(no message provided)');
+    
+    // Send to webhook for tracking
+    if (firstMessage) {
+      await sendToWebhook({
+        first_message: firstMessage,
+        user_name: `${currentUserInfo.firstName} ${currentUserInfo.lastName}`,
+        user_email: currentUserInfo.email
+      }, 'agent_requested_first_message');
+    }
+    
+    const response = {
+      message: firstMessage,
+      success: true,
+      hasMessage: firstMessage.length > 0,
+      info: firstMessage ? `User's first message: "${firstMessage}"` : 'No first message provided by user',
+      instruction: firstMessage ? 'Please respond directly to this message from the user' : 'User did not provide a first message'
+    };
+
+    console.log('📤 Returning to agent:', response);
+    return response;
+  }, []);
 
   // Memoized agent ID with validation
   const agentId = useMemo(() => {
@@ -229,77 +223,14 @@ const HomePage: React.FC = () => {
     return id;
   }, []);
 
-  // Enhanced session management with better error handling
-  const startSession = useCallback(async () => {
-    if (!agentId) {
-      console.error('❌ Cannot start session: Axie Studio Agent ID missing');
-      setIsStartingCall(false);
-      return;
-    }
-
-    console.log('🚀 Starting secure session...');
-    
-    try {
-      // Enhanced session configuration for better WebRTC stability
-      const sessionConfig = {
-        agentId: agentId,
-        connectionType: 'webrtc' as const,
-        // Add WebRTC configuration for better DataChannel reliability
-        webrtcConfig: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ],
-          iceCandidatePoolSize: 10,
-          bundlePolicy: 'max-bundle' as const,
-          rtcpMuxPolicy: 'require' as const
-        }
-      };
-
-      const sessionPromise = conversation.startSession(sessionConfig);
-
-      // Add timeout for connection with better error handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Axie Studio connection timeout - WebRTC setup failed')), CONNECTION_TIMEOUT);
-      });
-
-      await Promise.race([sessionPromise, timeoutPromise]);
-      console.log('✅ Axie Studio session started successfully');
-      console.log('🔧 Agent can now call get_firstandlastname, get_email, and get_info tools to receive and store user information');
-      
-    } catch (error) {
-      console.error('❌ Failed to start Axie Studio session:', error);
-      setIsStartingCall(false);
-      
-      // Enhanced error handling for WebRTC issues
-      if (error.message?.includes('DataChannel') || error.message?.includes('timeout')) {
-        console.warn('🔧 WebRTC/DataChannel issue detected during session start');
-        
-        // Clear any existing connection state
-        setIsSecureConnection(false);
-        
-        // Auto-retry with exponential backoff for WebRTC errors
-        if (connectionAttempts < RETRY_ATTEMPTS) {
-          const retryDelay = Math.min(3000 * Math.pow(2, connectionAttempts), 15000);
-          setConnectionAttempts(prev => prev + 1);
-          setTimeout(() => {
-            console.log(`🔄 Retrying session start after WebRTC error (${connectionAttempts + 1}/${RETRY_ATTEMPTS}) in ${retryDelay}ms`);
-            startSession();
-          }, retryDelay);
-        }
-      } else {
-        // Auto-retry on other failures
-        if (connectionAttempts < RETRY_ATTEMPTS) {
-          setConnectionAttempts(prev => prev + 1);
-          setTimeout(() => startSession(), 1000);
-        }
-      }
-    }
-  }, [agentId, conversation, connectionAttempts]);
-
   // Enhanced conversation configuration
   const conversation = useConversation({
-    clientTools: { get_firstandlastname, get_email, get_info },
+    clientTools: { 
+      get_firstandlastname,
+      get_email,
+      get_info,
+      send_first_message
+    },
     onConnect: useCallback(() => {
       console.log('🔗 Connected to Axie Studio AI Assistant');
       
@@ -362,8 +293,76 @@ const HomePage: React.FC = () => {
           }, 2000);
         }
       }
-    }, [connectionAttempts, conversation, startSession])
+    }, [connectionAttempts])
   });
+
+  // Enhanced session management with better error handling
+  const startSession = useCallback(async () => {
+    if (!agentId) {
+      console.error('❌ Cannot start session: Axie Studio Agent ID missing');
+      setIsStartingCall(false);
+      return;
+    }
+
+    console.log('🚀 Starting secure session...');
+    
+    try {
+      // Enhanced session configuration for better WebRTC stability
+      const sessionConfig = {
+        agentId: agentId,
+        connectionType: 'webrtc' as const,
+        // Add WebRTC configuration for better DataChannel reliability
+        webrtcConfig: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ],
+          iceCandidatePoolSize: 10,
+          bundlePolicy: 'max-bundle' as const,
+          rtcpMuxPolicy: 'require' as const
+        }
+      };
+
+      const sessionPromise = conversation.startSession(sessionConfig);
+
+      // Add timeout for connection with better error handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Axie Studio connection timeout - WebRTC setup failed')), CONNECTION_TIMEOUT);
+      });
+
+      await Promise.race([sessionPromise, timeoutPromise]);
+      console.log('✅ Axie Studio session started successfully');
+      console.log('🔧 Agent can now call get_firstandlastname, get_email, get_info, and send_first_message tools');
+      
+    } catch (error) {
+      console.error('❌ Failed to start Axie Studio session:', error);
+      setIsStartingCall(false);
+      
+      // Enhanced error handling for WebRTC issues
+      if (error.message?.includes('DataChannel') || error.message?.includes('timeout')) {
+        console.warn('🔧 WebRTC/DataChannel issue detected during session start');
+        
+        // Clear any existing connection state
+        setIsSecureConnection(false);
+        
+        // Auto-retry with exponential backoff for WebRTC errors
+        if (connectionAttempts < RETRY_ATTEMPTS) {
+          const retryDelay = Math.min(3000 * Math.pow(2, connectionAttempts), 15000);
+          setConnectionAttempts(prev => prev + 1);
+          setTimeout(() => {
+            console.log(`🔄 Retrying session start after WebRTC error (${connectionAttempts + 1}/${RETRY_ATTEMPTS}) in ${retryDelay}ms`);
+            startSession();
+          }, retryDelay);
+        }
+      } else {
+        // Auto-retry on other failures
+        if (connectionAttempts < RETRY_ATTEMPTS) {
+          setConnectionAttempts(prev => prev + 1);
+          setTimeout(() => startSession(), 1000);
+        }
+      }
+    }
+  }, [agentId, conversation, connectionAttempts]);
 
   // Optimized microphone permission request with better UX
   const requestMicrophonePermission = useCallback(async () => {
@@ -407,6 +406,7 @@ const HomePage: React.FC = () => {
       last_name: info.lastName,
       email: info.email,
       full_name: `${info.firstName} ${info.lastName}`,
+      first_message: info.firstMessage,
       prompt: 'User submitted information before starting AI call'
     }, 'pre_call_form_submission');
     
